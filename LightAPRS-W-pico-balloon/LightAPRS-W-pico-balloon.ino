@@ -37,10 +37,10 @@
 #define AprsPinInput  pinMode(12,INPUT);pinMode(13,INPUT);pinMode(14,INPUT);pinMode(15,INPUT)
 #define AprsPinOutput pinMode(12,OUTPUT);pinMode(13,OUTPUT);pinMode(14,OUTPUT);pinMode(15,OUTPUT)
 
-//#define DEVMODE // Development mode. Uncomment to enable for debugging.
+#define DEVMODE // Development mode. Uncomment to enable for debugging.
 
 //******************************  APRS CONFIG **********************************
-char    CallSign[7]="NOCALL"; //DO NOT FORGET TO CHANGE YOUR CALLSIGN
+char    CallSign[7]="N6DM"; //DO NOT FORGET TO CHANGE YOUR CALLSIGN
 int8_t  CallNumber=11; //SSID http://www.aprs.org/aprs11/SSIDs.txt
 char    Symbol='O'; // '/O' for balloon, '/>' for car, for more info : http://www.aprs.org/symbols/symbols-new.txt
 bool    alternateSymbolTable = false ; //false = '/' , true = '\'
@@ -58,7 +58,7 @@ float     WsprBattMin=4.5; //min Volts for HF mradio module to transmit (TX) ~10
 
 //******************************  HF CONFIG *************************************
 
-char hf_call[7] = "NOCALL"; //DO NOT FORGET TO CHANGE YOUR CALLSIGN
+char hf_call[7] = "N6DM"; //DO NOT FORGET TO CHANGE YOUR CALLSIGN
 
 //#define WSPR_DEFAULT_FREQ       10140200UL //30m band
 #define WSPR_DEFAULT_FREQ       14097200UL //20m band
@@ -209,11 +209,23 @@ void setup() {
 void loop() {
   wdt_reset();
 
-  if (readBatt() > BattMin) {
+  float battV = readBatt();
+ #if defined(DEVMODE)
+   Serial.print(F("Battery: "));
+   printFloat(battV, true, 6, 2);
+   Serial.print(F("GPSInvalidTime: "));
+   printInt(GpsInvalidTime, true, 5);
+   Serial.print(F("TempC: "));
+   float tempC = bmp.readTemperature();//-21.4;//
+   printFloat(tempC, true, 6, 1);
+   Serial.println();
+#endif  
+
+  if (battV > BattMin) {
     if (aliveStatus) {
-	#if defined(DEVMODE)
+#if defined(DEVMODE)
         Serial.println(F("Sending"));
-    #endif		
+#endif		
       sendStatus();
 #if defined(DEVMODE)
       Serial.println(F("Status sent"));
@@ -313,7 +325,7 @@ void loop() {
 
       } else {
 #if defined(DEVMODE)
-        Serial.println(F("Not enough sattelites"));
+        Serial.println(F("Not enough satellites"));
 #endif
       }
     } 
@@ -827,7 +839,7 @@ void gpsDebug() {
 #if defined(DEVMODE)
   Serial.println();
   Serial.println(F("Sats HDOP Latitude   Longitude   Fix  Date       Time     Date Alt    Course Speed Card Chars Sentences Checksum"));
-  Serial.println(F("          (deg)      (deg)       Age                      Age  (m)    --- from GPS ----  RX    RX        Fail"));
+  Serial.println(F("          (deg)      (deg)       Age                      Age  (m)    --- from GPS ----  RX    RX       Fail  OK"));
   Serial.println(F("-----------------------------------------------------------------------------------------------------------------"));
 
   printInt(gps.satellites.value(), gps.satellites.isValid(), 5);
@@ -843,7 +855,8 @@ void gpsDebug() {
 
   printInt(gps.charsProcessed(), true, 6);
   printInt(gps.sentencesWithFix(), true, 10);
-  printInt(gps.failedChecksum(), true, 9);
+  printInt(gps.failedChecksum(), true, 4);
+  printInt(gps.passedChecksum(), true, 5);
   Serial.println();
 
 #endif
