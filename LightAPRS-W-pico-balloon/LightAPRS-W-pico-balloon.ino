@@ -149,7 +149,7 @@ boolean HFSent = false;
 
 //******************************  GPS SETTINGS   *********************************
 
-int16_t   GpsResetTime=600; // timeout for reset if GPS is not fixed
+int16_t   GpsResetTime=1800; // originally 600 -- time to reset GPS, if GPS cannot fix our location
 
 // GEOFENCE 
 uint32_t GEOFENCE_APRS_frequency      = 144390000; //default frequency before geofencing. This variable will be updated based on GPS location.
@@ -157,7 +157,7 @@ uint32_t GEOFENCE_no_tx               = 0;
 
 boolean GpsFirstFix=false; //do not change this
 boolean ublox_high_alt_mode_enabled = false; //do not change this
-int16_t   GpsInvalidTime=0; //do not change this
+int16_t GpsInvalidTime=0; //do not change this
 
 //********************************************************************************
 
@@ -212,12 +212,13 @@ void loop() {
   float battV = readBatt();
  #if defined(DEVMODE)
    Serial.print(F("Battery: "));
-   printFloat(battV, true, 6, 2);
-   Serial.print(F("GPSInvalidTime: "));
-   printInt(GpsInvalidTime, true, 5);
-   Serial.print(F("TempC: "));
-   float tempC = bmp.readTemperature();//-21.4;//
+   printFloat(battV, true, 5, 2);
+   Serial.print(F("GPSInvalid: "));
+   printInt(GpsInvalidTime, true, 4);
+   Serial.print(F("secs, TempC: "));
+   float tempC = bmp.readTemperature();
    printFloat(tempC, true, 6, 1);
+   float pressure = bmp.readPressure() / 100.0; //Pa to hPa
    Serial.println();
 #endif  
 
@@ -251,7 +252,8 @@ void loop() {
         wdt_reset();
         delay(1000);
         GpsON;
-        GpsInvalidTime=0;     
+        GpsInvalidTime=0;   
+        gps = TinyGPSPlus();    // reset gps parser
       }
     }
     
@@ -360,6 +362,16 @@ void sleepSeconds(int sec) {
   }
   wdt_enable(WDTO_8S);
   wdt_reset();
+}
+
+int pressureAltitude(float pressurePa) {
+  const float stdSeaLevelPressHPa = 1013.25 // hPa = hecto Pascal (aka millibars)
+  float curPressureHPa = pressurePa / 100.0
+  
+  float t1 = stdSeaLevelPressHPa / pressurePa
+  
+  float tmp1 = log(pressurePa / 101325.0); 
+  float tmp2 = tmp1 * 287.053
 }
 
 boolean isAirborneAPRSAllowed() {
@@ -624,22 +636,25 @@ void sendStatus() {
 
 static void updateGpsData(int ms)
 {
+#ifdef DEVMODE
+   Serial.print(F("GPS Update START\n"));
+#endif
   GpsON;
 
   if(!ublox_high_alt_mode_enabled){
       //enable ublox high altitude mode
-      delay(100);
+      delay(100);   // pause 100 ms
       setGPS_DynamicModel6();
       #if defined(DEVMODE)
         Serial.println(F("ublox DynamicModel6 enabled..."));
       #endif      
       ublox_high_alt_mode_enabled = true;
-      
    }
   
   while (!Serial1) {
     delayMicroseconds(1); // wait for serial port to connect.
   }
+  
   unsigned long start = millis();
   unsigned long bekle = 0;
   do
@@ -647,7 +662,12 @@ static void updateGpsData(int ms)
     while (Serial1.available() > 0) {
       char c;
       c = Serial1.read();
-      gps.encode(c);
+      bool goodSentence = gps.encode(c);
+#ifdef DEVMODE
+      if (!goodSentence) {
+        Serial.print(c);
+      }
+#endif
       bekle = millis();
     }
     if (gps.time.isValid())
@@ -655,9 +675,12 @@ static void updateGpsData(int ms)
       setTime(gps.time.hour(), gps.time.minute(), gps.time.second(), NULL, NULL, NULL);
       
     }
-    if (bekle != 0 && bekle + 10 < millis())break;
+    if (bekle != 0 && bekle + 10 < millis()) break;
   } while (millis() - start < ms);
 
+#ifdef DEVMODE
+   Serial.print(F("GPS Update DONE\n"));
+#endif
 }
 
 float readBatt() {
