@@ -365,13 +365,15 @@ void sleepSeconds(int sec) {
 }
 
 int pressureAltitude(float pressurePa) {
-  const float stdSeaLevelPressHPa = 1013.25 // hPa = hecto Pascal (aka millibars)
-  float curPressureHPa = pressurePa / 100.0
+  const float stdSeaLevelPressHPa = 1013.25;  // hPa = hecto Pascal (aka millibars)
+  float curPressureHPa = pressurePa / 100.0;
   
-  float t1 = stdSeaLevelPressHPa / pressurePa
+  float t1 = stdSeaLevelPressHPa / pressurePa;
   
   float tmp1 = log(pressurePa / 101325.0); 
-  float tmp2 = tmp1 * 287.053
+  float tmp2 = tmp1 * 287.053;
+
+  return 0;    // TBD
 }
 
 boolean isAirborneAPRSAllowed() {
