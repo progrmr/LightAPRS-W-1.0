@@ -378,6 +378,9 @@ void sleepSeconds(int sec) {
   }
   wdt_enable(WDTO_8S);
   wdt_reset();
+
+  // millis() count doesn't advance while powered down, manually adjust time
+  adjustTime(sec);
 }
 
 // computes approximate altitude based on barometric pressure and temperature
@@ -636,19 +639,13 @@ void sendStatusViaAPRS() {
   AprsPinOutput;
   RfON;
   delay(2000);
-  
   RfPttON;
-#if defined(DEVMODE)
-  Serial.println(F("RF PTT ON done"));
-#endif    
   delay(1000);
 
-#if defined(DEVMODE)
-  Serial.println(F("APRS send starting..."));
-#endif
 
   APRS_sendStatus(StatusMessage, strlen(StatusMessage));
 
+  
   delay(50);
   while (digitalRead(1)) {;} //LibAprs TX Led pin PB1
   delay(50);
@@ -715,28 +712,33 @@ void enterGroundTestGPSData() {
   Serial.println(F("--- Start GROUND TEST"));
   delay(950);
 
-  int hh = 0;
+  int year = 20;
+  int month = 12;
+  int day = 31;
+  int hh = 18;
   int mm = 0;
   int ss = 0;
   
   char UTCTimeStr[10];
-  if (timeStatus() == timeNotSet) {
-      Serial.print(F("*** RTC NOT SET, using: "));
-      hh = 18;
-      mm = 0;
-      ss = 0;
-  } else {
-      Serial.print(F("--- RTC already set to: "));
+  char UTCDateStr[10];
+  
+  if (timeStatus() == timeSet) {
+      Serial.print(F("--- RTC already set: "));
       hh = hour();
       mm = minute();
       ss = second();
+  } else {
+    Serial.print(F("--- RTC not yet set: "));
   }
   sprintf(UTCTimeStr, "%02d%02d%02d", hh, mm, ss);
   Serial.println(UTCTimeStr);
 
+  // date string
+  sprintf(UTCDateStr, "%02d%02d%02d", day, month, year);
+
   // ground test in progress, ignore GPS, used canned GPS sentences
   char sentence[120];
-  sprintf(sentence, "$GPRMC,%s,A,3300.00,N,11700.00,W,000.0,000.0,311220,014.0,E", UTCTimeStr);
+  sprintf(sentence, "$GPRMC,%s,A,3300.00,N,11700.00,W,000.0,000.0,%s,014.0,E", UTCTimeStr, UTCDateStr);
   encodeNMEA(sentence);
   
   sprintf(sentence, "$GPGLL,3300.00,N,11700.00,W,%s,A", UTCTimeStr);
@@ -749,7 +751,7 @@ void enterGroundTestGPSData() {
       Serial.println(F("--- Valid GPS time"));
       if (timeStatus() == timeNotSet) {
         Serial.println(F("--- RTC wasn't set, setting now using GPS time"));
-        setTime(gps.time.hour(), gps.time.minute(), gps.time.second(), 31, 12, 20);
+        setTime(gps.time.hour(), gps.time.minute(), gps.time.second(), day, month, year);
       }
   } else {
       Serial.println(F("***** INVALID GPS TIME"));
