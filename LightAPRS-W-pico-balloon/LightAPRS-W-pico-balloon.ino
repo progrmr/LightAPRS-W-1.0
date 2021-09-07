@@ -366,21 +366,32 @@ void sleepSeconds(int sec) {
   RfPttOFF;
   SiOFF;
 #if defined(DEVMODE)
+  Serial.print(F("Sleeping for "));
+  printInt(sec,true,4);
+  Serial.println(F(" seconds."));
   Serial.flush();
 #endif
+
   wdt_disable();
-  for (int i = 0; i < sec; i++) {
+  int secsLeft = (sec * 88) / 100;    // reduce by 12% due to overhead of powering down
+  while (secsLeft > 0) {
     if (readBatt() < GpsMinVolt){
       GpsOFF;
       ublox_high_alt_mode_enabled = false;
     } 
-    LowPower.powerDown(SLEEP_1S, ADC_OFF, BOD_ON);
+
+    if (secsLeft >= 8) {
+      LowPower.powerDown(SLEEP_8S, ADC_OFF, BOD_ON);
+      secsLeft -= 8;
+    } else {
+      LowPower.powerDown(SLEEP_1S, ADC_OFF, BOD_ON);
+      secsLeft -= 1;
+    }
   }
   wdt_enable(WDTO_8S);
   wdt_reset();
 
-  // millis() count doesn't advance while powered down, manually adjust time
-  adjustTime(sec);
+  adjustTime(sec);  // fix time, because millis() doesn't advance during sleep
 }
 
 // computes approximate altitude based on barometric pressure and temperature
