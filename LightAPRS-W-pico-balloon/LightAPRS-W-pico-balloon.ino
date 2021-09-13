@@ -39,8 +39,10 @@
 
 #define DEVMODE // Development mode. Uncomment to enable for debugging.
 #define GROUNDTEST  // testing on the ground, ignore GPS (which is not working)
+#undef DO_APRS     // enables APRS output
 
 //******************************  APRS CONFIG **********************************
+#ifdef DO_APRS
 char    CallSign[7]="N6DM"; //DO NOT FORGET TO CHANGE YOUR CALLSIGN
 int8_t  CallNumber=11; //SSID http://www.aprs.org/aprs11/SSIDs.txt
 char    Symbol='O'; // '/O' for balloon, '/>' for car, for more info : http://www.aprs.org/symbols/symbols-new.txt
@@ -48,6 +50,7 @@ bool    alternateSymbolTable = false ; //false = '/' , true = '\'
 
 char    comment[50] = "http://www.lightaprs.com"; // Max 50 char
 char    StatusMessage[50] = "LightAPRS-W by TA2NHP & TA2MUN";
+#endif
 //*****************************************************************************
 
 uint16_t  BeaconWait=50;  //seconds sleep for next beacon (HF or VHF). This is optimized value, do not change this if possible.
@@ -106,8 +109,10 @@ boolean beaconViaARISS = false; //there are no iGates in some regions (such as N
 boolean radioSetup = false;
 boolean  aliveStatus = true; //for tx status message on first wake-up just once.
 
+#ifdef DO_APRS
 static char aprsTelemetryBuff[100];   // APRS telemetry buffer
 uint16_t TxCount = 1; //increase +1 after every APRS transmission
+#endif
 
 //*******************************************************************************
 
@@ -159,6 +164,7 @@ uint32_t GEOFENCE_no_tx               = 0;
 boolean GpsFirstFix=false; //do not change this
 boolean ublox_high_alt_mode_enabled = false; //do not change this
 int16_t GpsInvalidTime=0; //do not change this
+int32_t GpsValidTime=0;
 
 //********************************************************************************
 
@@ -191,6 +197,7 @@ void setup() {
   Serial.println(F("Start Setup"));
 #endif
 
+#if DO_APRS
   APRS_init(ADC_REFERENCE, OPEN_SQUELCH);
   APRS_setCallsign(CallSign,CallNumber);
   APRS_setDestination("APLIGA", 0);
@@ -203,6 +210,8 @@ void setup() {
   APRS_setPreamble(350UL);
   APRS_setPathSize(pathSize);
   AprsPinInput;
+#endif
+
   bmp.begin();
 
 }
@@ -212,21 +221,9 @@ void loop() {
 
   // read battery, temperature and barometer values
   float batteryV = readBatt();
-  float temperatureC = bmp.readTemperature();
-  int32_t baroPressureHPa = lroundf(bmp.readPressure() / 100.0); //Pa to hPa
-  pressureAltitudeM = toPressureAltitude(baroPressureHPa, temperatureC);
 
 #ifdef DEVMODE
-  char line[100];
-  char s1[20], s2[20];
-  dtostrf(batteryV, 4, 1, s1);
-  dtostrf(temperatureC, 4, 1, s2);
-  sprintf(line, "battery: %sv, temperature: %sºC, pressure: %ld, altitude: %ldm",
-          s1, s2, baroPressureHPa, pressureAltitudeM);
-  Serial.println(line);
-
-  sprintf(line, "GPS Invalid: %d seconds", GpsInvalidTime);
-  Serial.println(line);
+  printSensors(batteryV);
 #endif
 
   if (batteryV > BattMin) {
@@ -254,7 +251,9 @@ void loop() {
 
     if(gps.location.isValid() && gps.location.age()<1000){
       GpsInvalidTime=0;
+      GpsValidTime++;
     }else{
+      GpsValidTime=0;
       GpsInvalidTime++;
       if(GpsInvalidTime > GpsResetTime){
         GpsOFF;
@@ -263,6 +262,7 @@ void loop() {
         delay(1000);
         GpsON;
         GpsInvalidTime = 0;
+        GpsValidTime = 0;
 
         gps.location = TinyGPSLocation();
         gps.date = TinyGPSDate();
@@ -309,7 +309,7 @@ void loop() {
 #endif               
 
         } else {
-
+#ifdef DO_APRS
           updatePosition();
           updateTelemetry();
           //APRS frequency isn't the same for the whole world. (for pico balloon only)
@@ -329,6 +329,7 @@ void loop() {
           if (isAirborneAPRSAllowed()) {
             sendLocationViaAPRS();
           }
+#endif // DO_APRS
 
           freeMem();
           Serial.flush();
@@ -356,6 +357,29 @@ void loop() {
 void aprs_msg_callback(struct AX25Msg *msg) {
   //do not remove this function, necessary for LibAPRS.
 }
+
+#ifdef DEVMODE
+void printSensors(float batteryV) {
+  float temperatureC = bmp.readTemperature();
+  int32_t baroPressureHPa = lroundf(bmp.readPressure() / 100.0); //Pa to hPa
+  pressureAltitudeM = toPressureAltitude(baroPressureHPa, temperatureC);
+
+  char line[100];
+  char s1[20], s2[20];
+  dtostrf(batteryV, 4, 1, s1);
+  dtostrf(temperatureC, 4, 1, s2);
+  sprintf(line, "battery: %sv, temperature: %sºC, pressure: %ld, altitude: %ldm",
+          s1, s2, baroPressureHPa, pressureAltitudeM);
+  Serial.println(line);
+
+  if (GpsInvalidTime > 0) {
+    sprintf(line, "*** GPS INVALID: %d seconds", GpsInvalidTime);
+  } else {
+    sprintf(line, "--- GPS Valid: %d seconds", GpsValidTime);
+  }
+  Serial.println(line);
+}
+#endif  // DEVMODE
 
 void sleepSeconds(int sec) {
   if (GpsFirstFix){//sleep gps after first fix
@@ -411,6 +435,7 @@ int32_t toPressureAltitude(int32_t pressureHPa, float tempC) {
   return int32_t(lroundf(altitudeMeters));
 }
 
+#ifdef DO_APRS
 boolean isAirborneAPRSAllowed() {
 
   float tempLat = gps.location.lat();
@@ -463,7 +488,6 @@ void configureFreqbyLocation() {
   radioSetup = true;
 }
 
-
 byte configDra818(char *freq)
 {
   SoftwareSerial Serial_dra(PIN_DRA_RX, PIN_DRA_TX);
@@ -491,7 +515,11 @@ byte configDra818(char *freq)
   RfOFF;
   pinMode(PIN_DRA_TX, INPUT);
 #if defined(DEVMODE)
-  if (ack[0] == 0x30) Serial.println(F("Frequency updated...")); else Serial.println(F("Frequency update error!"));
+  if (ack[0] == 0x30) { 
+    Serial.println(F("Frequency updated...")); 
+  } else {
+    Serial.println(F("Frequency update error!"));
+  }
 #endif
   return (ack[0] == 0x30) ? 1 : 0;
 }
@@ -556,7 +584,6 @@ void updatePosition() {
 
   APRS_setLon(lonStr);
 }
-
 
 void updateTelemetry() {
   sprintf(aprsTelemetryBuff, "%03d", gps.course.isValid() ? (int)gps.course.deg() : 0);
@@ -669,6 +696,7 @@ void sendStatusViaAPRS() {
 
   TxCount++;
 }
+#endif    // DO_APRS
 
 static void updateGpsData(int ms)
 {
