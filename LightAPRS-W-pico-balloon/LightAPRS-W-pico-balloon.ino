@@ -39,7 +39,7 @@
 
 #define DEVMODE       // Development mode. Uncomment to enable for debugging.
 #define GROUNDTEST    // testing on the ground, ignore GPS (which is not working)
-#define DO_APRS        // enables APRS transmissions
+#undef  DO_APRS        // enables APRS transmissions
 #define DO_WSPR        // enables WSPR transmissions
 
 //******************************  APRS CONFIG **********************************
@@ -199,6 +199,22 @@ void setup() {
   Serial1.begin(9600); //GPS serial
 #if defined(DEVMODE)
   Serial.println(F("\n\n\n\n_______________ Start Setup ____________"));
+#ifdef DO_APRS
+  Serial.println(F("+++ APRS enabled"));
+#else
+  Serial.println(F("--- APRS removed"));
+#endif
+#ifdef DO_WSPR
+  Serial.println(F("+++ WSPR enabled"));
+#else
+  Serial.println(F("--- WSPR removed"));
+#endif
+#ifdef GROUNDTEST 
+  Serial.println(F("*** GROUND TEST enabled, GPS ignored"));
+#else
+  Serial.println(F("+++ GPS enabled"));
+#endif
+  Serial.println(F("\n\n"));
 #endif
 
 #ifdef DO_APRS
@@ -298,7 +314,7 @@ void loop() {
           sprintf(hf_message,"%s %s",hf_call,hf_loc);
 
 #if defined(DEVMODE)
-          Serial.println(F("--- Digital HF Mode Prepearing"));
+          Serial.println(F("--- Digital HF Mode Preparing"));
           Serial.println(hf_loc);
 #endif
           HFSent = false;
