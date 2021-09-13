@@ -40,7 +40,8 @@
 #define DEVMODE       // Development mode. Uncomment to enable for debugging.
 #define GROUNDTEST    // testing on the ground, ignore GPS (which is not working)
 #undef  DO_APRS        // enables APRS transmissions
-#define DO_WSPR        // enables WSPR transmissions
+#undef  DO_WSPR        // enables WSPR transmissions
+#define DO_SSTV        // enables SSTV transmittions
 
 //******************************  APRS CONFIG **********************************
 #ifdef DO_APRS
@@ -90,7 +91,11 @@ enum mode cur_mode = MODE_WSPR; //default HF mode
 #define JT4_DEFAULT_FREQ        14078500UL
 #define FSQ_DEFAULT_FREQ        7105350UL     // Base freq is 1350 Hz higher than dial freq in USB
 
-//*******************************************************************************
+//******************************** SSTV CONFIG **********************************
+//
+// SSTV frequency, source:  https://vk6ysf.com/sstvfrequ.htm
+//
+#define SSTV_DEFAULT_FREQ       14_230_000UL   // 20m band
 
 
 //******************************  APRS SETTINGS *********************************
