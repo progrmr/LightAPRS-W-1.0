@@ -37,9 +37,10 @@
 #define AprsPinInput  pinMode(12,INPUT);pinMode(13,INPUT);pinMode(14,INPUT);pinMode(15,INPUT)
 #define AprsPinOutput pinMode(12,OUTPUT);pinMode(13,OUTPUT);pinMode(14,OUTPUT);pinMode(15,OUTPUT)
 
-#define DEVMODE // Development mode. Uncomment to enable for debugging.
-#define GROUNDTEST  // testing on the ground, ignore GPS (which is not working)
-#undef DO_APRS     // enables APRS output
+#define DEVMODE       // Development mode. Uncomment to enable for debugging.
+#define GROUNDTEST    // testing on the ground, ignore GPS (which is not working)
+#define DO_APRS        // enables APRS transmissions
+#define DO_WSPR        // enables WSPR transmissions
 
 //******************************  APRS CONFIG **********************************
 #ifdef DO_APRS
@@ -56,10 +57,13 @@ char    StatusMessage[50] = "LightAPRS-W by TA2NHP & TA2MUN";
 uint16_t  BeaconWait=50;  //seconds sleep for next beacon (HF or VHF). This is optimized value, do not change this if possible.
 uint16_t  BattWait=60;    //seconds sleep if super capacitors/batteries are below BattMin (important if power source is solar panel) 
 float     BattMin=4.5;    // min Volts to wake up.
+#ifdef DO_APRS
 float     DraHighVolt=6.0;// min Volts for radio module (DRA818V) to transmit (TX) 1 Watt, below this transmit 0.5 Watt.
+#endif
 float     GpsMinVolt=4.0; //min Volts for GPS to wake up. (important if power source is solar panel) 
+#ifdef DO_WSPR
 float     WsprBattMin=4.5; //min Volts for HF mradio module to transmit (TX) ~10 mW
-
+#endif
 //******************************  HF CONFIG *************************************
 
 char hf_call[7] = "N6DM"; //DO NOT FORGET TO CHANGE YOUR CALLSIGN
@@ -194,10 +198,10 @@ void setup() {
   Serial.begin(57600); //Arduino serial
   Serial1.begin(9600); //GPS serial
 #if defined(DEVMODE)
-  Serial.println(F("Start Setup"));
+  Serial.println(F("\n\n\n\n_______________ Start Setup ____________"));
 #endif
 
-#if DO_APRS
+#ifdef DO_APRS
   APRS_init(ADC_REFERENCE, OPEN_SQUELCH);
   APRS_setCallsign(CallSign,CallNumber);
   APRS_setDestination("APLIGA", 0);
@@ -229,11 +233,11 @@ void loop() {
   if (batteryV > BattMin) {
     if (aliveStatus) {
 #if defined(DEVMODE)
-      Serial.println(F("Sending status via APRS"));
+      Serial.println(F("--- Sending status via APRS"));
 #endif
       //sendStatusViaAPRS();
 #if defined(DEVMODE)
-      Serial.println(F("Status sent via APRS"));
+      Serial.println(F("--- Status sent via APRS"));
 #endif
       aliveStatus = false;
 
@@ -280,17 +284,21 @@ void loop() {
         GpsOFF;
         GpsFirstFix = true;
         ublox_high_alt_mode_enabled = false; //gps sleep mode resets high altitude mode.
-#if defined(DEVMODE)
-          Serial.println(F("Before WSPR Check"));
-#endif        
 
+#ifndef DO_WSPR
+        if (0) {
+#endif
+#ifdef DO_WSPR
+#if defined(DEVMODE)
+          Serial.println(F("--- Before WSPR Check"));
+#endif        
         // preparations for HF starts one minute before TX time at minute 3, 7, 13, 17, 23, 27, 33, 37, 43, 47, 53 or 57. No APRS TX during this period...
         if (readBatt() > WsprBattMin && timeStatus() == timeSet && ((minute() % 10 == 3) || (minute() % 10 == 7)) ) { 
           GridLocator(hf_loc, gps.location.lat(), gps.location.lng());
           sprintf(hf_message,"%s %s",hf_call,hf_loc);
 
 #if defined(DEVMODE)
-          Serial.println(F("Digital HF Mode Prepearing"));
+          Serial.println(F("--- Digital HF Mode Prepearing"));
           Serial.println(hf_loc);
 #endif
           HFSent = false;
@@ -299,14 +307,15 @@ void loop() {
             wdt_reset();
           }
 #if defined(DEVMODE)
-          Serial.println(F("Digital HF Mode Sending"));
+          Serial.println(F("--- Digital HF Mode Sending"));
 #endif          
           encode();
 
           HFSent = true;
 #if defined(DEVMODE)
-          Serial.println(F("Digital HF Mode Sent"));
-#endif               
+          Serial.println(F("--- Digital HF Mode Sent"));
+#endif       
+#endif // DO_WSPR
 
         } else {
 #ifdef DO_APRS
@@ -344,7 +353,7 @@ void loop() {
 
       } else {
 #if defined(DEVMODE)
-        Serial.println(F("Not enough satellites"));
+        Serial.println(F("*** Not enough satellites"));
 #endif
       }
     } 
@@ -368,7 +377,7 @@ void printSensors(float batteryV) {
   char s1[20], s2[20];
   dtostrf(batteryV, 4, 1, s1);
   dtostrf(temperatureC, 4, 1, s2);
-  sprintf(line, "battery: %sv, temperature: %sºC, pressure: %ld, altitude: %ldm",
+  sprintf(line, "--- battery: %sv, temperature: %sºC, pressure: %ld, altitude: %ldm",
           s1, s2, baroPressureHPa, pressureAltitudeM);
   Serial.println(line);
 
@@ -390,9 +399,9 @@ void sleepSeconds(int sec) {
   RfPttOFF;
   SiOFF;
 #if defined(DEVMODE)
-  Serial.print(F("Sleeping for "));
+  Serial.print(F("--- Sleeping for "));
   printInt(sec,true,4);
-  Serial.println(F(" seconds."));
+  Serial.println(F(" seconds.\n"));
   Serial.flush();
 #endif
 
@@ -468,60 +477,118 @@ void configureFreqbyLocation() {
 
   float tempLat = gps.location.lat();
   float tempLong = gps.location.lng();
-
-
+  boolean success = false;
+  
   if(beaconViaARISS && inARISSGeoFence(tempLat, tempLong)) {
     APRS_setPath1("ARISS", Wide1);
     APRS_setPath2("WIDE2", Wide2);
     APRS_setPathSize(2);
-    configDra818("145.8250");  
+    success = configDra818("145.8250"); 
+     
   } else {
-
     GEOFENCE_position(tempLat,tempLong);  
     float dividedFreq = GEOFENCE_APRS_frequency / 1000000.f;
     char aprsFreq_buff[9];
     dtostrf(dividedFreq, 8, 4, aprsFreq_buff);
-    configDra818(aprsFreq_buff);    
-
+    success = configDra818(aprsFreq_buff);    
   }
 
-  radioSetup = true;
+  radioSetup = success;
 }
 
-byte configDra818(char *freq)
+boolean configDra818(char *freq)
 {
+  char cmd[50];
+  sprintf(cmd, "AT+DMOSETGROUP=0,%s,%s,0000,4,0000", freq, freq);
+  
+#if defined(DEVMODE)
+  Serial.print(F("--- Config DRA: "));
+  Serial.println(cmd);
+#endif
+
   SoftwareSerial Serial_dra(PIN_DRA_RX, PIN_DRA_TX);
   Serial_dra.begin(9600);
+  delay(100);
   RfON;
-  char ack[3];
-  int n;
-  delay(2000);
-  char cmd[50];
-#if defined(DEVMODE)
-      Serial.println(F("Config DRA.."));
-#endif
-  sprintf(cmd, "AT+DMOSETGROUP=0,%s,%s,0000,4,0000", freq, freq);
-  Serial_dra.println(cmd);
-  ack[2] = 0;
-  while (ack[2] != 0xa)
-  {
-    if (Serial_dra.available() > 0) {
-      ack[0] = ack[1];
-      ack[1] = ack[2];
-      ack[2] = Serial_dra.read();
-    }
+  delay(3000);
+
+  boolean success = false;
+  int retriesLeft = 3;
+  while (retriesLeft > 0) {
+    // send command to configure frequency
+    Serial_dra.println(cmd);    
+
+    // restart watchdog timer so we have enough time to finish
+    wdt_reset();    
+  
+    success = waitForAckFromDRA(3000, &Serial_dra);
+    if (success) break;
+    retriesLeft--;
   }
+ 
   Serial_dra.end();
   RfOFF;
   pinMode(PIN_DRA_TX, INPUT);
 #if defined(DEVMODE)
-  if (ack[0] == 0x30) { 
-    Serial.println(F("Frequency updated...")); 
+  if (success) { // TODO: ack[0] == 0x30) { 
+    Serial.println(F("--- Frequency updated...")); 
   } else {
-    Serial.println(F("Frequency update error!"));
+    Serial.println(F("*** ERR: Frequency update error!"));
   }
 #endif
-  return (ack[0] == 0x30) ? 1 : 0;
+
+  return false; 
+  // TODO: return (ack[0] == 0x30) ? true : false;
+}
+
+boolean waitForAckFromDRA(uint16_t timeLimitMS, SoftwareSerial* Serial_dra) 
+{
+  const uint32_t startMS = millis();
+
+  char reply[80];     // reply string, not null terminated
+  int replyLen = 0;   // length of reply string content
+
+  while (1)
+  {
+    char replyCh = 0;
+
+    // get next character in reply text
+    //
+    if (Serial_dra->available() > 0) {
+      replyCh = Serial_dra->read();
+      reply[replyLen++] = replyCh;
+
+      if (replyLen >= sizeof(reply)) {
+#if defined(DEVMODE)
+         printReply(reply, replyLen);
+#endif
+         replyLen = 0;
+      }
+    }
+
+    // look for LF at end of reply text
+    if (replyCh == 0x0A) {
+#ifdef DEVMODE
+      printReply(reply, replyLen);
+#endif
+      // TODO: check "0" or "1" in reply to see if really successful
+      return true;
+    }
+
+    // still waiting for reply, timeout if too long
+    uint32_t elapsed = millis() - startMS;
+    if (elapsed >= timeLimitMS) {
+#if defined(DEVMODE)
+      printReply(reply, replyLen);
+
+      Serial.print(F("*** ERR: NO ACK from DRA, after "));
+      printInt(elapsed,true,5);
+      Serial.println(F(" ms"));
+#endif
+      return false;       //  FAILED to get ACK from DRA
+    }
+    
+  } // while loop
 }
 
 void updatePosition() {
@@ -629,7 +696,7 @@ void updateTelemetry() {
   sprintf(aprsTelemetryBuff + 54, "%s", comment);
 
 #if defined(DEVMODE)
-  Serial.print(F("APRS Telemetry: "));
+  Serial.print(F("--- APRS Telemetry: "));
   Serial.println(aprsTelemetryBuff);
 #endif
 
@@ -638,7 +705,7 @@ void updateTelemetry() {
 void sendLocationViaAPRS() {
 
 #if defined(DEVMODE)
-  Serial.println(F("APRS Location sending with comment"));
+  Serial.println(F("--- APRS Location sending with comment"));
 #endif
   if ((readBatt() > DraHighVolt) && (readBatt() < 10)) RfPwrHigh; //DRA Power 1 Watt
   else RfPwrLow; //DRA Power 0.5 Watt
@@ -651,6 +718,8 @@ void sendLocationViaAPRS() {
   char timestamp_buff[8];
   sprintf(timestamp_buff, "%02d%02d%02dh", hh, mm, ss);
 
+  wdt_reset();    // restart watchdog timer so we have enough time to finish
+
   AprsPinOutput;
   RfON;
   delay(2000);
@@ -658,6 +727,7 @@ void sendLocationViaAPRS() {
   delay(1000);
 
   APRS_sendLocWtTmStmp(aprsTelemetryBuff, strlen(aprsTelemetryBuff), timestamp_buff);
+  
   delay(50);
   while (digitalRead(1)) {;} //LibAprs TX Led pin PB1
   delay(50);
@@ -665,7 +735,7 @@ void sendLocationViaAPRS() {
   RfOFF;
   AprsPinInput;
 #if defined(DEVMODE)
-  Serial.println(F("APRS Location sent with comment"));
+  Serial.println(F("--- APRS Location sent with comment"));
 #endif
 
   TxCount++;
@@ -680,9 +750,7 @@ void sendStatusViaAPRS() {
   RfPttON;
   delay(1000);
 
-
   APRS_sendStatus(StatusMessage, strlen(StatusMessage));
-
   
   delay(50);
   while (digitalRead(1)) {;} //LibAprs TX Led pin PB1
@@ -691,7 +759,7 @@ void sendStatusViaAPRS() {
   RfOFF;
   AprsPinInput;
 #if defined(DEVMODE)
-  Serial.println(F("Status sent"));
+  Serial.println(F("--- Status sent"));
 #endif
 
   TxCount++;
@@ -701,7 +769,7 @@ void sendStatusViaAPRS() {
 static void updateGpsData(int ms)
 {
 #ifdef DEVMODE
-   Serial.print(F("GPS Update START\n"));
+   Serial.println(F("--- GPS Update START\n"));
 #endif
   GpsON;
 
@@ -710,7 +778,7 @@ static void updateGpsData(int ms)
       delay(100);   // pause 100 ms
       setGPS_DynamicModel6();
       #if defined(DEVMODE)
-        Serial.println(F("ublox DynamicModel6 enabled..."));
+        Serial.println(F("--- ublox DynamicModel6 enabled..."));
       #endif      
       ublox_high_alt_mode_enabled = true;
   }
@@ -742,7 +810,7 @@ static void updateGpsData(int ms)
     if (bekle != 0 && bekle + 10 < millis()) break;
   } while (millis() - start < ms);
 #ifdef DEVMODE
-   Serial.println(F("GPS Update DONE"));
+   Serial.println(F("--- GPS Update DONE"));
 #endif
 }
 
@@ -793,7 +861,7 @@ void enterGroundTestGPSData() {
         setTime(gps.time.hour(), gps.time.minute(), gps.time.second(), day, month, year);
       }
   } else {
-      Serial.println(F("***** INVALID GPS TIME"));
+      Serial.println(F("*** INVALID GPS TIME"));
   }
 }
 
@@ -820,9 +888,9 @@ void encodeNMEA(const char* const str) {
   bool valid = gps.encode('\n');
   
   if (!valid) {
-      Serial.print(F("*** INVALID sentence: "));
+      Serial.print(F("*** ERR: invalid sentence: "));
   } else {
-      Serial.print(F("--- VALID: "));
+      Serial.print(F("--- Valid: "));
   }
   char debugMsg[120];
   sprintf(debugMsg, "%s$%c%c", str, p1, p2);
@@ -1009,7 +1077,7 @@ void GridLocator(char *dst, float latt, float lon) {
 
 void freeMem() {
 #if defined(DEVMODE)
-  Serial.print(F("Free RAM: ")); Serial.print(freeMemory()); Serial.println(F(" byte"));
+  Serial.print(F("--- Free RAM: ")); Serial.print(freeMemory()); Serial.println(F(" byte"));
 #endif
 }
 
@@ -1078,6 +1146,40 @@ static void printInt(unsigned long val, bool valid, int len)
   Serial.print(sz);
 #endif
 }
+
+#ifdef DEVMODE
+static void printReply(char* reply, int replyLen) 
+{
+  if (replyLen>0) {
+    Serial.print(F("REPLY: "));
+    printStringWHex(reply, replyLen);
+    Serial.println();
+  }
+}
+
+static void printStringWHex(char* str, int length)
+{
+  for (int i=0; i<length; i++) {
+    char ch = str[i];
+    if (ch <= ' ') {
+      printHex(ch);
+    } else {
+      Serial.print(ch);  
+    }
+  }
+}
+
+static void printHex(uint16_t val) 
+{
+  uint16_t upper4 = (val & 0xF0) >> 4;
+  uint16_t lower4 = (val & 0x0F);
+  char hex[3];
+  hex[0] = (upper4 <= 9) ? '0'+upper4 : 'A'+upper4-10;
+  hex[1] = (lower4 <= 9) ? '0'+lower4 : 'A'+lower4-10;
+  hex[2] = 0;
+  Serial.print(hex);
+}
+#endif
 
 static void printDateTime(TinyGPSDate &d, TinyGPSTime &t)
 {
