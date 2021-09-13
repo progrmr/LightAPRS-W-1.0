@@ -61,7 +61,7 @@ float     WsprBattMin=4.5; //min Volts for HF mradio module to transmit (TX) ~10
 char hf_call[7] = "N6DM"; //DO NOT FORGET TO CHANGE YOUR CALLSIGN
 
 //#define WSPR_DEFAULT_FREQ       10140200UL //30m band
-#define WSPR_DEFAULT_FREQ       14097200UL //20m band
+#define WSPR_DEFAULT_FREQ       14097100UL //20m band
 //#define WSPR_DEFAULT_FREQ       18106100UL //17M band
 //#define WSPR_DEFAULT_FREQ       21096100UL //15m band
 //#define WSPR_DEFAULT_FREQ       24926100UL //12M band
@@ -523,7 +523,7 @@ void updatePosition() {
 
 void updateTelemetry() {
   sprintf(telemetry_buff, "%03d", gps.course.isValid() ? (int)gps.course.deg() : 0);
-  telemetry_buff[3] += '/';
+  telemetry_buff[3] = '/';
   sprintf(telemetry_buff + 4, "%03d", gps.speed.isValid() ? (int)gps.speed.knots() : 0);
   telemetry_buff[7] = '/';
   telemetry_buff[8] = 'A';
