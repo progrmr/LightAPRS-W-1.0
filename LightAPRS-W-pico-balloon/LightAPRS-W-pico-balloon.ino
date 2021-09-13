@@ -500,12 +500,8 @@ boolean configDra818(char *freq)
 {
   char cmd[50];
   sprintf(cmd, "AT+DMOSETGROUP=0,%s,%s,0000,4,0000", freq, freq);
+  //strcpy(cmd, "AT+DMOCONNECT");
   
-#if defined(DEVMODE)
-  Serial.print(F("--- Config DRA: "));
-  Serial.println(cmd);
-#endif
-
   SoftwareSerial Serial_dra(PIN_DRA_RX, PIN_DRA_TX);
   Serial_dra.begin(9600);
   delay(100);
@@ -515,6 +511,10 @@ boolean configDra818(char *freq)
   boolean success = false;
   int retriesLeft = 3;
   while (retriesLeft > 0) {
+#ifdef DEVMODE
+    Serial.print(F("--- Config DRA: "));
+    Serial.println(cmd);
+#endif
     // send command to configure frequency
     Serial_dra.println(cmd);    
 
@@ -529,66 +529,80 @@ boolean configDra818(char *freq)
   Serial_dra.end();
   RfOFF;
   pinMode(PIN_DRA_TX, INPUT);
+  
 #if defined(DEVMODE)
-  if (success) { // TODO: ack[0] == 0x30) { 
+  if (success) {
     Serial.println(F("--- Frequency updated...")); 
   } else {
     Serial.println(F("*** ERR: Frequency update error!"));
   }
 #endif
 
-  return false; 
-  // TODO: return (ack[0] == 0x30) ? true : false;
+  return success; 
 }
 
 boolean waitForAckFromDRA(uint16_t timeLimitMS, SoftwareSerial* Serial_dra) 
 {
   const uint32_t startMS = millis();
-
-  char reply[80];     // reply string, not null terminated
+  uint32_t elapsedMS = 0;     // milliseconds spent waiting for ACK
+  boolean success = false;
+  
+  char reply[80];     // reply bytes, not null terminated
   int replyLen = 0;   // length of reply string content
-
-  while (1)
+  
+  while (elapsedMS < timeLimitMS)
   {
-    char replyCh = 0;
 
     // get next character in reply text
     //
-    if (Serial_dra->available() > 0) {
-      replyCh = Serial_dra->read();
-      reply[replyLen++] = replyCh;
+    if (Serial_dra->available() == 0) {
+      // still waiting, update elapsed time
+      elapsedMS = millis() - startMS;
+
+      // still waiting for reply, timeout if too long
+      if (elapsedMS >= timeLimitMS) {
+#ifdef DEVMODE
+        printReply(reply, replyLen);
+        Serial.println(F("*** ERR: timed out waiting for DRA reply"));
+#endif
+        return false;     //********* TIMEOUT, failed to get ACK
+      }
+     
+    } else {
+      // read the next character from DRA into reply buffer
+      reply[replyLen++] = Serial_dra->read();
+ 
+      // look for LF at end of reply message
+      if (reply[replyLen] == 0x0A) {
+        // check "0" or "1" in reply to see if really successful
+        if (reply[replyLen-2] == '1') {
+#ifdef DEVMODE
+          printReply(reply, replyLen);
+          Serial.println(F("--- Success DRA configured"));
+#endif
+          return true;    //--------- SUCCESS, GOT ACK
+        } else if (reply[replyLen-2] == '0') {
+#ifdef DEVMODE
+          printReply(reply, replyLen);
+          Serial.println(F("*** ERR: DRA return 0"));
+#endif
+          return false;   //--------- FAILED, GOT NACK
+        }
+      }
 
       if (replyLen >= sizeof(reply)) {
-#if defined(DEVMODE)
-         printReply(reply, replyLen);
+        // reply buffer is full, discard older data, keep recent data
+        int discardLen = sizeof(reply) / 2;
+#ifdef DEVMODE
+        printReply(reply, discardLen);
 #endif
-         replyLen = 0;
+        char* start = &reply[0];
+        char* middle = &reply[discardLen];
+        memmove(start, middle, replyLen-discardLen);
+        replyLen -= discardLen;
       }
     }
-
-    // look for LF at end of reply text
-    if (replyCh == 0x0A) {
-#ifdef DEVMODE
-      printReply(reply, replyLen);
-#endif
-      // TODO: check "0" or "1" in reply to see if really successful
-      return true;
-    }
-
-    // still waiting for reply, timeout if too long
-    uint32_t elapsed = millis() - startMS;
-    if (elapsed >= timeLimitMS) {
-#if defined(DEVMODE)
-      printReply(reply, replyLen);
-
-      Serial.print(F("*** ERR: NO ACK from DRA, after "));
-      printInt(elapsed,true,5);
-      Serial.println(F(" ms"));
-#endif
-      return false;       //  FAILED to get ACK from DRA
-    }
-    
-  } // while loop
+  }  // while loop
 }
 
 void updatePosition() {
@@ -1151,7 +1165,7 @@ static void printInt(unsigned long val, bool valid, int len)
 static void printReply(char* reply, int replyLen) 
 {
   if (replyLen>0) {
-    Serial.print(F("REPLY: "));
+    Serial.print(F("DRA REPLY: "));
     printStringWHex(reply, replyLen);
     Serial.println();
   }
