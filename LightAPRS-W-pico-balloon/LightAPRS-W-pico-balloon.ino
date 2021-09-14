@@ -38,8 +38,8 @@
 #define AprsPinOutput pinMode(12,OUTPUT);pinMode(13,OUTPUT);pinMode(14,OUTPUT);pinMode(15,OUTPUT)
 
 #define DEVMODE       // Development mode. Uncomment to enable for debugging.
-#define GROUNDTEST    // testing on the ground, ignore GPS (which is not working)
-#undef  DO_APRS        // enables APRS transmissions
+#undef GROUNDTEST    // testing on the ground, ignore GPS (which is not working)
+#define DO_APRS        // enables APRS transmissions
 #define DO_WSPR        // enables WSPR transmissions
 
 //******************************  APRS CONFIG **********************************
@@ -248,13 +248,15 @@ void loop() {
 
   if (batteryV > BattMin) {
     if (aliveStatus) {
+#ifdef DO_APRS
 #if defined(DEVMODE)
       Serial.println(F("--- Sending status via APRS"));
 #endif
-      //sendStatusViaAPRS();
+      sendStatusViaAPRS();
 #if defined(DEVMODE)
       Serial.println(F("--- Status sent via APRS"));
 #endif
+#endif // DO_APRS
       aliveStatus = false;
 
       while (readBatt() < BattMin) {
