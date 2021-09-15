@@ -1,3 +1,11 @@
+//
+// Configuration definitions - added 9/14/21 Gary N6DM
+//
+#define DEVMODE       // Development mode. Uncomment to enable for debugging.
+#define USE_GPS_SIM   // for testing on the ground use GPS simulator, ignore Ublox GPS
+#define USE_APRS      // enables APRS transmissions
+#define USE_WSPR      // enables WSPR transmissions
+
 #include <Arduino.h>
 #include <Wire.h>
 #include <SoftwareSerial.h>
@@ -37,13 +45,8 @@
 #define AprsPinInput  pinMode(12,INPUT);pinMode(13,INPUT);pinMode(14,INPUT);pinMode(15,INPUT)
 #define AprsPinOutput pinMode(12,OUTPUT);pinMode(13,OUTPUT);pinMode(14,OUTPUT);pinMode(15,OUTPUT)
 
-#define DEVMODE       // Development mode. Uncomment to enable for debugging.
-#undef GROUNDTEST    // testing on the ground, ignore GPS (which is not working)
-#define DO_APRS        // enables APRS transmissions
-#define DO_WSPR        // enables WSPR transmissions
-
 //******************************  APRS CONFIG **********************************
-#ifdef DO_APRS
+#ifdef USE_APRS
 char    CallSign[7]="N6DM"; //DO NOT FORGET TO CHANGE YOUR CALLSIGN
 int8_t  CallNumber=11; //SSID http://www.aprs.org/aprs11/SSIDs.txt
 char    Symbol='O'; // '/O' for balloon, '/>' for car, for more info : http://www.aprs.org/symbols/symbols-new.txt
@@ -54,18 +57,7 @@ char    StatusMessage[50] = "LightAPRS-W by TA2NHP & TA2MUN";
 #endif
 //*****************************************************************************
 
-uint16_t  BeaconWait=50;  //seconds sleep for next beacon (HF or VHF). This is optimized value, do not change this if possible.
-uint16_t  BattWait=60;    //seconds sleep if super capacitors/batteries are below BattMin (important if power source is solar panel) 
-float     BattMin=4.5;    // min Volts to wake up.
-#ifdef DO_APRS
-float     DraHighVolt=6.0;// min Volts for radio module (DRA818V) to transmit (TX) 1 Watt, below this transmit 0.5 Watt.
-#endif
-float     GpsMinVolt=4.0; //min Volts for GPS to wake up. (important if power source is solar panel) 
-#ifdef DO_WSPR
-float     WsprBattMin=4.5; //min Volts for HF mradio module to transmit (TX) ~10 mW
-#endif
 //******************************  HF CONFIG *************************************
-
 char hf_call[7] = "N6DM"; //DO NOT FORGET TO CHANGE YOUR CALLSIGN
 
 //#define WSPR_DEFAULT_FREQ       10140200UL //30m band
@@ -75,7 +67,6 @@ char hf_call[7] = "N6DM"; //DO NOT FORGET TO CHANGE YOUR CALLSIGN
 //#define WSPR_DEFAULT_FREQ       24926100UL //12M band
 //#define WSPR_DEFAULT_FREQ       28126100UL //10m band
 //for all bands -> http://wsprnet.org/drupal/node/7352
-
 
 // Supported modes, default HF mode is WSPR
 enum mode {MODE_JT9, MODE_JT65, MODE_JT4, MODE_WSPR, MODE_FSQ_2, MODE_FSQ_3,
@@ -89,11 +80,18 @@ enum mode cur_mode = MODE_WSPR; //default HF mode
 #define JT65_DEFAULT_FREQ       14078300UL
 #define JT4_DEFAULT_FREQ        14078500UL
 #define FSQ_DEFAULT_FREQ        7105350UL     // Base freq is 1350 Hz higher than dial freq in USB
-
 //*******************************************************************************
 
+// changed variables to defines to same RAM -- 9/14/21 N6DM
+#define   BeaconWait 50   //seconds sleep for next beacon (HF or VHF). This is optimized value, do not change this if possible.
+#define   BattWait   60   //seconds sleep if super capacitors/batteries are below BattMin (important if power source is solar panel) 
+#define   BattMin    4.5  //min Volts to wake up.
+#define   GpsMinVolt 4.0  //min Volts for GPS to wake up. (important if power source is solar panel) 
+#define   DraHighVolt 6.0 //min Volts for radio module (DRA818V) to transmit (TX) 1 Watt, below this transmit 0.5 Watt.
+#define   WsprBattMin 4.5 //min Volts for HF mradio module to transmit (TX) ~10 mW
 
 //******************************  APRS SETTINGS *********************************
+#ifdef USE_APRS
 
 //do not change WIDE path settings below if you don't know what you are doing :) 
 uint8_t   Wide1=1; // 1 for WIDE1-1 path
@@ -110,11 +108,10 @@ boolean autoPathSizeHighAlt = true; //force path to WIDE2-N only for high altitu
 
 boolean beaconViaARISS = false; //there are no iGates in some regions (such as North Africa,  Oceans, etc) so try to beacon via ARISS (International Space Station) https://www.amsat.org/amateur-radio-on-the-iss/
 
-boolean radioSetup = false;
-boolean  aliveStatus = true; //for tx status message on first wake-up just once.
+boolean aprsRadioSetup = false;
+boolean sendAliveStatus = true;  //for tx status message on first wake-up just once.
 
-#ifdef DO_APRS
-static char aprsTelemetryBuff[100];   // APRS telemetry buffer
+char aprsTelemetryBuff[100];   // APRS telemetry buffer
 uint16_t TxCount = 1; //increase +1 after every APRS transmission
 #endif
 
@@ -151,7 +148,6 @@ uint8_t symbol_count;
 uint16_t tone_delay, tone_spacing;
 volatile bool proceed = false;
 
-boolean HFSent = false;
 int32_t pressureAltitudeM;    // derived from barometric pressure reading
 
 //*******************************************************************************
@@ -199,17 +195,17 @@ void setup() {
   Serial1.begin(9600); //GPS serial
 #if defined(DEVMODE)
   Serial.println(F("\n\n\n\n_______________ Start Setup ____________"));
-#ifdef DO_APRS
+#ifdef USE_APRS
   Serial.println(F("+++ APRS enabled"));
 #else
   Serial.println(F("--- APRS removed"));
 #endif
-#ifdef DO_WSPR
+#ifdef USE_WSPR
   Serial.println(F("+++ WSPR enabled"));
 #else
   Serial.println(F("--- WSPR removed"));
 #endif
-#ifdef GROUNDTEST 
+#ifdef USE_GPS_SIM 
   Serial.println(F("*** GROUND TEST enabled, GPS ignored"));
 #else
   Serial.println(F("+++ GPS enabled"));
@@ -217,7 +213,7 @@ void setup() {
   Serial.println(F("\n\n"));
 #endif
 
-#ifdef DO_APRS
+#ifdef USE_APRS
   APRS_init(ADC_REFERENCE, OPEN_SQUELCH);
   APRS_setCallsign(CallSign,CallNumber);
   APRS_setDestination("APLIGA", 0);
@@ -246,38 +242,35 @@ void loop() {
   printSensors(batteryV);
 #endif
 
-  if (batteryV > BattMin) {
-    if (aliveStatus) {
-#ifdef DO_APRS
-#if defined(DEVMODE)
-      Serial.println(F("--- Sending status via APRS"));
-#endif
-      sendStatusViaAPRS();
-#if defined(DEVMODE)
-      Serial.println(F("--- Status sent via APRS"));
-#endif
-#endif // DO_APRS
-      aliveStatus = false;
+  if (batteryV < BattMin) {
+    sleepSeconds(BattWait);
+    return;       // ====== RETURN ======
+  }
+  
+#ifdef USE_APRS
+  if (sendAliveStatus) {
+    sendStatusViaAPRS();
+    sendAliveStatus = false;
+    return;       // ====== RETURN ======
+  }
+#endif // USE_APRS
 
-      while (readBatt() < BattMin) {
-        sleepSeconds(BattWait); 
-      }
-    }
-
-#ifdef GROUNDTEST
-    enterGroundTestGPSData();
+#ifdef USE_GPS_SIM
+    bool GpsLocationGood = enterGroundTestGPSData();
 #else
-    updateGpsData(1000);
+    bool GpsLocationGood = updateGpsData(1000);
 #endif
     gpsDebug();
-
-    if(gps.location.isValid() && gps.location.age()<1000){
+    
+    if (GpsLocationGood) {
       GpsInvalidTime=0;
       GpsValidTime++;
-    }else{
+      
+    } else {
       GpsValidTime=0;
       GpsInvalidTime++;
-      if(GpsInvalidTime > GpsResetTime){
+      
+      if (GpsInvalidTime > GpsResetTime) {
         GpsOFF;
         ublox_high_alt_mode_enabled = false; //gps sleep mode resets high altitude mode.
         wdt_reset();
@@ -297,89 +290,33 @@ void loop() {
       }
     }
 
-    if ((gps.location.age() < 1000 || gps.location.isUpdated()) && gps.location.isValid()) {
-      if (gps.satellites.isValid() && gps.satellites.value() >= 3) {
+    boolean GpsSatellitesGood = gps.satellites.isValid() && gps.satellites.value() >= 3;
+
+    if (GpsLocationGood && GpsSatellitesGood) {
         GpsOFF;
         GpsFirstFix = true;
         ublox_high_alt_mode_enabled = false; //gps sleep mode resets high altitude mode.
 
-#ifndef DO_WSPR
-        if (0) {
+        if (isTimeForWSPR()) {
+#ifdef USE_WSPR
+          sendPositionViaWSPR();
 #endif
-#ifdef DO_WSPR
-#if defined(DEVMODE)
-          Serial.println(F("--- Before WSPR Check"));
-#endif        
-        // preparations for HF starts one minute before TX time at minute 3, 7, 13, 17, 23, 27, 33, 37, 43, 47, 53 or 57. No APRS TX during this period...
-        if (readBatt() > WsprBattMin && timeStatus() == timeSet && ((minute() % 10 == 3) || (minute() % 10 == 7)) ) { 
-          GridLocator(hf_loc, gps.location.lat(), gps.location.lng());
-          sprintf(hf_message,"%s %s",hf_call,hf_loc);
-
-#if defined(DEVMODE)
-          Serial.println(F("--- Digital HF Mode Preparing"));
-          Serial.println(hf_loc);
-#endif
-          HFSent = false;
-          //HF transmission starts at minute 4, 8, 14, 18, 24, 28, 34, 38, 44, 48, 54 or 58 
-          while (((minute() % 10 != 4) || (minute() % 10 != 8)) && second() != 0) {
-            wdt_reset();
-          }
-#if defined(DEVMODE)
-          Serial.println(F("--- Digital HF Mode Sending"));
-#endif          
-          encode();
-
-          HFSent = true;
-#if defined(DEVMODE)
-          Serial.println(F("--- Digital HF Mode Sent"));
-#endif       
-#endif // DO_WSPR
-
         } else {
-#ifdef DO_APRS
-          updatePosition();
-          updateTelemetry();
-          //APRS frequency isn't the same for the whole world. (for pico balloon only)
-          if (!radioSetup || TxCount == 200) {
-            configureFreqbyLocation();
-          }
-
-          if(autoPathSizeHighAlt && gps.altitude.feet()>3000){
-            //force to use high altitude settings (WIDE2-n)
-            APRS_setPathSize(1);
-          } else {
-            //use default settings
-            APRS_setPathSize(pathSize);
-          }
-
-          //in some countries Airborne APRS is not allowed. (for pico balloon only)
-          if (isAirborneAPRSAllowed()) {
-            sendLocationViaAPRS();
-          }
-#endif // DO_APRS
-
-          freeMem();
-          Serial.flush();
-          //If two minutes time slot is close, sleep less than default. 
-          if (timeStatus() != timeNotSet && ((minute() % 10 == 2) || (minute() % 10 == 6))){
-             sleepSeconds(60 - second());
-          } else {
-             sleepSeconds(BeaconWait);
-          }
-
+#ifdef USE_APRS
+          sendPositionViaAPRS();
+#endif // USE_APRS
         }
 
-      } else {
-#if defined(DEVMODE)
-        Serial.println(F("*** Not enough satellites"));
-#endif
-      }
-    } 
-  } else {
-    sleepSeconds(BattWait);
-  }
-
-}
+        freeMem();
+        
+        //If two minutes time slot is close, sleep less than default. 
+        if (timeStatus() != timeNotSet && ((minute() % 10 == 2) || (minute() % 10 == 6))) {
+           sleepSeconds(60 - second());
+        } else {
+           sleepSeconds(BeaconWait);
+        }
+    }
+} // end loop()
 
 void aprs_msg_callback(struct AX25Msg *msg) {
   //do not remove this function, necessary for LibAPRS.
@@ -462,7 +399,68 @@ int32_t toPressureAltitude(int32_t pressureHPa, float tempC) {
   return int32_t(lroundf(altitudeMeters));
 }
 
-#ifdef DO_APRS
+#ifndef USE_WSPR
+boolean isTimeForWSPR() {
+  return false;
+}
+#else // USE_WSPR
+boolean isTimeForWSPR() {
+  // preparations for HF starts one minute before TX time at minute 3, 7, 13, 17, 23, 27, 33, 37, 43, 47, 53 or 57. 
+  // No APRS TX during this period...
+  int min = minute() % 10;
+  
+  return (readBatt() > WsprBattMin) && 
+         (timeStatus() == timeSet) &&
+         ((min == 3) || (min == 7));
+}
+
+void sendPositionViaWSPR() {
+    GridLocator(hf_loc, gps.location.lat(), gps.location.lng());
+    sprintf(hf_message,"%s %s",hf_call,hf_loc);
+
+#if defined(DEVMODE)
+    Serial.print(F("--- WSPR Preparing, message: "));
+    Serial.println(hf_message);
+#endif
+    
+    //HF transmission starts at minute 4, 8, 14, 18, 24, 28, 34, 38, 44, 48, 54 or 58 
+    while (((minute() % 10 != 4) || (minute() % 10 != 8)) && second() != 0) {
+      wdt_reset();
+    }
+    
+    sendMessageViaHF();
+    
+#if defined(DEVMODE)
+    Serial.println(F("--- WSPR Sent"));
+#endif
+}
+#endif  // USE_WSPR
+
+#ifdef USE_APRS
+void sendPositionViaAPRS() {
+  updatePosition();
+  updateTelemetry();
+          
+  //APRS frequency isn't the same for the whole world. (for pico balloon only)
+  if (!aprsRadioSetup || TxCount == 200) {
+    configureFreqbyLocation();
+  }
+
+  if (autoPathSizeHighAlt && gps.altitude.feet()>3000){
+    //force to use high altitude settings (WIDE2-n)
+    APRS_setPathSize(1);
+  } else {
+    //use default settings
+    APRS_setPathSize(pathSize);
+  }
+
+  //in some countries Airborne APRS is not allowed. (for pico balloon only)
+  if (isAirborneAPRSAllowed()) {
+    sendLocationViaAPRS();
+  }
+}
+
+
 boolean isAirborneAPRSAllowed() {
 
   float tempLat = gps.location.lat();
@@ -511,7 +509,7 @@ void configureFreqbyLocation() {
     success = configDra818(aprsFreq_buff);    
   }
 
-  radioSetup = success;
+  aprsRadioSetup = success;
 }
 
 boolean configDra818(char *freq)
@@ -774,6 +772,9 @@ void sendLocationViaAPRS() {
 }
 
 void sendStatusViaAPRS() {
+#if defined(DEVMODE)
+      Serial.println(F("--- Sending status via APRS"));
+#endif
   if ((readBatt() > DraHighVolt) && (readBatt() < 10)) RfPwrHigh; //DRA Power 1 Watt
   else RfPwrLow; //DRA Power 0.5 Watt
   AprsPinOutput;
@@ -791,14 +792,14 @@ void sendStatusViaAPRS() {
   RfOFF;
   AprsPinInput;
 #if defined(DEVMODE)
-  Serial.println(F("--- Status sent"));
+  Serial.println(F("--- Status sent via APRS"));
 #endif
 
   TxCount++;
 }
-#endif    // DO_APRS
+#endif    // USE_APRS
 
-static void updateGpsData(int ms)
+boolean updateGpsData(int ms)
 {
 #ifdef DEVMODE
    Serial.println(F("--- GPS Update START\n"));
@@ -837,17 +838,19 @@ static void updateGpsData(int ms)
     if (gps.time.isValid())
     {
       setTime(gps.time.hour(), gps.time.minute(), gps.time.second(), NULL, NULL, NULL);
-
     }
     if (bekle != 0 && bekle + 10 < millis()) break;
   } while (millis() - start < ms);
+  
 #ifdef DEVMODE
    Serial.println(F("--- GPS Update DONE"));
 #endif
+
+  return (gps.location.age() < 1000 || gps.location.isUpdated()) && gps.location.isValid();
 }
 
-#ifdef GROUNDTEST
-void enterGroundTestGPSData() {
+#ifdef USE_GPS_SIM
+boolean enterGroundTestGPSData() {
   Serial.println(F("--- Start GROUND TEST"));
   delay(950);
 
@@ -895,6 +898,8 @@ void enterGroundTestGPSData() {
   } else {
       Serial.println(F("*** INVALID GPS TIME"));
   }
+
+  return gps.time.isValid() && (gps.location.age() < 1000 || gps.location.isUpdated()) && gps.location.isValid();
 }
 
 void encodeNMEA(const char* const str) {
@@ -958,15 +963,17 @@ void Timer3Tick(void)
   proceed = true;
 }
 
-void encode()
+void sendMessageViaHF()
 {
   wdt_reset();
+#if defined(DEVMODE)
+          Serial.println(F("--- Digital HF Mode Sending"));
+#endif          
   SiON;
   delay(20);
   si5351.init(SI5351_CRYSTAL_LOAD_0PF, 0, CORRECTION);
   si5351.drive_strength(SI5351_CLK0, SI5351_DRIVE_8MA); // Set for max power if desired
   si5351.output_enable(SI5351_CLK0, 0);
-  uint8_t i;
 
   switch(cur_mode)
   {
@@ -1040,7 +1047,7 @@ void encode()
   Timer3.attachInterrupt(Timer3Tick);
   Timer3.restart();
 
-  for (i = 0; i < symbol_count; i++)
+  for (int i = 0; i < symbol_count; i++)
   {
     si5351.set_freq((hf_freq * 100) + (tx_buffer[i] * tone_spacing), SI5351_CLK0);
     proceed = false;
@@ -1051,7 +1058,10 @@ void encode()
   // Turn off the output
   si5351.output_enable(SI5351_CLK0, 0);
   SiOFF;
-}
+#if defined(DEVMODE)
+  Serial.println(F("--- Digital HF Mode Sent"));
+#endif       
+} // sendMessageViaHF()
 
 void set_tx_buffer()
 {
@@ -1109,7 +1119,10 @@ void GridLocator(char *dst, float latt, float lon) {
 
 void freeMem() {
 #if defined(DEVMODE)
-  Serial.print(F("--- Free RAM: ")); Serial.print(freeMemory()); Serial.println(F(" byte"));
+  Serial.print(F("--- Free RAM: ")); 
+  Serial.print(freeMemory()); 
+  Serial.println(F(" bytes"));
+  Serial.flush();
 #endif
 }
 
@@ -1143,7 +1156,7 @@ void gpsDebug() {
 #endif
 }
 
-static void printFloat(float val, bool valid, int len, int prec)
+void printFloat(float val, bool valid, int len, int prec)
 {
 #if defined(DEVMODE)
   if (!valid)
@@ -1164,7 +1177,7 @@ static void printFloat(float val, bool valid, int len, int prec)
 #endif
 }
 
-static void printInt(unsigned long val, bool valid, int len)
+void printInt(unsigned long val, bool valid, int len)
 {
 #if defined(DEVMODE)
   char sz[32] = "*****************";
@@ -1180,7 +1193,7 @@ static void printInt(unsigned long val, bool valid, int len)
 }
 
 #ifdef DEVMODE
-static void printReply(char* reply, int replyLen) 
+void printReply(char* reply, int replyLen) 
 {
   if (replyLen>0) {
     Serial.print(F("DRA REPLY: "));
@@ -1189,7 +1202,7 @@ static void printReply(char* reply, int replyLen)
   }
 }
 
-static void printStringWHex(char* str, int length)
+void printStringWHex(char* str, int length)
 {
   for (int i=0; i<length; i++) {
     char ch = str[i];
@@ -1201,7 +1214,7 @@ static void printStringWHex(char* str, int length)
   }
 }
 
-static void printHex(uint16_t val) 
+void printHex(uint16_t val) 
 {
   uint16_t upper4 = (val & 0xF0) >> 4;
   uint16_t lower4 = (val & 0x0F);
@@ -1213,7 +1226,7 @@ static void printHex(uint16_t val)
 }
 #endif
 
-static void printDateTime(TinyGPSDate &d, TinyGPSTime &t)
+void printDateTime(TinyGPSDate &d, TinyGPSTime &t)
 {
 #if defined(DEVMODE)
   if (!d.isValid())
@@ -1242,7 +1255,7 @@ static void printDateTime(TinyGPSDate &d, TinyGPSTime &t)
 #endif
 }
 
-static void printStr(const char *str, int len)
+void printStr(const char *str, int len)
 {
 #if defined(DEVMODE)
   int slen = strlen(str);
