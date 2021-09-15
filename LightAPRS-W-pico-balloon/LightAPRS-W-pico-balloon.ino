@@ -261,10 +261,13 @@ void loop() {
     bool GpsLocationGood = updateGpsData(1000);
 #endif
     gpsDebug();
+
+    bool GpsSatellitesGood = false;
     
     if (GpsLocationGood) {
       GpsInvalidTime=0;
       GpsValidTime++;
+      GpsSatellitesGood = gps.satellites.isValid() && gps.satellites.value() >= 3 && (timeStatus() == timeSet);
       
     } else {
       GpsValidTime=0;
@@ -290,9 +293,7 @@ void loop() {
       }
     }
 
-    boolean GpsSatellitesGood = gps.satellites.isValid() && gps.satellites.value() >= 3;
-
-    if (GpsLocationGood && GpsSatellitesGood) {
+    if (GpsSatellitesGood) {
         GpsOFF;
         GpsFirstFix = true;
         ublox_high_alt_mode_enabled = false; //gps sleep mode resets high altitude mode.
@@ -301,16 +302,19 @@ void loop() {
 #ifdef USE_WSPR
           sendPositionViaWSPR();
 #endif
-        } else {
+        } else if (isTimeForAPRS()) {
 #ifdef USE_APRS
           sendPositionViaAPRS();
 #endif // USE_APRS
+        } else {
+          // nothing to do this time
         }
 
         freeMem();
         
         //If two minutes time slot is close, sleep less than default. 
-        if (timeStatus() != timeNotSet && ((minute() % 10 == 2) || (minute() % 10 == 6))) {
+        const int min = minute() % 10;
+        if ((min == 2) || (min == 6)) {
            sleepSeconds(60 - second());
         } else {
            sleepSeconds(BeaconWait);
@@ -436,7 +440,16 @@ void sendPositionViaWSPR() {
 }
 #endif  // USE_WSPR
 
-#ifdef USE_APRS
+#ifndef USE_APRS
+boolean isTimeForAPRS() {
+  return false;
+}
+#else
+boolean isTimeForAPRS() {
+  return (readBatt() > BattMin) &&
+         (timeStatus() == timeSet);
+}
+
 void sendPositionViaAPRS() {
   updatePosition();
   updateTelemetry();
