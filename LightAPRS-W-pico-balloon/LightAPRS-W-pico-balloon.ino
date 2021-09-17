@@ -3,7 +3,7 @@
 //
 #define DEVMODE       // Development mode. Uncomment to enable for debugging.
 #define USE_GPS_SIM   // for testing on the ground use GPS simulator, ignore Ublox GPS
-#define USE_APRS      // enables APRS transmissions
+#undef  USE_APRS      // enables APRS transmissions
 #define USE_WSPR      // enables WSPR transmissions
 
 #include <Arduino.h>
@@ -259,8 +259,8 @@ void loop() {
     bool GpsLocationGood = enterGroundTestGPSData();
 #else
     bool GpsLocationGood = updateGpsData(1000);
-#endif
     gpsDebug();
+#endif
 
     bool GpsSatellitesGood = false;
     
@@ -1165,7 +1165,6 @@ void gpsDebug() {
   printInt(gps.failedChecksum(), true, 4);
   printInt(gps.passedChecksum(), true, 5);
   Serial.println();
-
 #endif
 }
 
