@@ -5,6 +5,7 @@
 #define USE_GPS_SIM   // for testing on the ground use GPS simulator, ignore Ublox GPS
 #undef  USE_APRS      // enables APRS transmissions
 #define USE_WSPR      // enables WSPR transmissions
+#define USE_ARDUCAM   // enables Arducam camera module 
 
 #include <Arduino.h>
 #include <Wire.h>
@@ -19,6 +20,12 @@
 #include <JTEncode.h>       //https://github.com/etherkit/JTEncode (JT65/JT9/JT4/FT8/WSPR/FSQ Encoder Library)
 #include <TimeLib.h>        //https://github.com/PaulStoffregen/Time
 #include <TimerThree.h>     //https://github.com/PaulStoffregen/TimerThree/
+
+#ifdef USE_ARDUCAM
+#include <ArduCAM.h>
+#include <SPI.h>
+#include "memorysaver.h"
+#endif
 
 #define RfPDPin     19
 #define GpsVccPin   18
@@ -138,6 +145,29 @@ uint16_t TxCount = 1; //increase +1 after every APRS transmission
 
 #define CORRECTION              -3700         // Change this for your ref osc
 
+//******************************  ARDUCAM declarations   *********************************
+#ifdef USE_ARDUCAM 
+#define BMPIMAGEOFFSET 66
+const char bmp_header[BMPIMAGEOFFSET] PROGMEM =
+{
+  0x42, 0x4D, 0x36, 0x58, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x42, 0x00, 0x00, 0x00, 0x28, 0x00,
+  0x00, 0x00, 0x40, 0x01, 0x00, 0x00, 0xF0, 0x00, 0x00, 0x00, 0x01, 0x00, 0x10, 0x00, 0x03, 0x00,
+  0x00, 0x00, 0x00, 0x58, 0x02, 0x00, 0xC4, 0x0E, 0x00, 0x00, 0xC4, 0x0E, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF8, 0x00, 0x00, 0xE0, 0x07, 0x00, 0x00, 0x1F, 0x00,
+  0x00, 0x00
+};
+
+// set pin 7 as the slave select for the digital pot:
+const int CS = 7;
+
+#if defined (OV2640_MINI_2MP_PLUS)
+  ArduCAM myCAM( OV2640, CS );
+#else
+  ArduCAM myCAM( OV5642, CS );
+#endif
+#endif
+//*******************************************************************************
+
 // Global variables
 unsigned long hf_freq;
 char hf_message[13] = "NOCALL AA00";//for non WSPR modes, you don't have to change this, updated by hf_call and GPS location
@@ -230,6 +260,29 @@ void setup() {
 
   bmp.begin();
 
+#ifdef USE_ARDUCAM
+  // initialize SPI:
+  SPI.begin();
+  
+  //Reset the CPLD
+  myCAM.write_reg(0x07, 0x80);
+  delay(100);
+  myCAM.write_reg(0x07, 0x00);
+  delay(100);
+  while (1) {
+    //Check if the ArduCAM SPI bus is OK
+    myCAM.write_reg(ARDUCHIP_TEST1, 0x55);
+    uint8_t temp = myCAM.read_reg(ARDUCHIP_TEST1);
+    if (temp != 0x55) {
+      Serial.println(F("ACK CMD SPI interface Error! END"));
+      delay(1000);
+      continue;
+    } else {
+      Serial.println(F("ACK CMD SPI interface OK. END"));
+      break;
+    }
+  }
+#endif
 }
 
 void loop() {
