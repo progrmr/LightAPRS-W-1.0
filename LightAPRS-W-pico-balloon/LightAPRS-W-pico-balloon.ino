@@ -2,10 +2,10 @@
 // Configuration definitions - added 9/14/21 Gary N6DM
 //
 #define DEVMODE       // Development mode. Uncomment to enable for debugging.
-#define USE_GPS_SIM   // for testing on the ground use GPS simulator, ignore Ublox GPS
-#undef  USE_APRS      // enables APRS transmissions
+#undef USE_GPS_SIM   // for testing on the ground use GPS simulator, ignore Ublox GPS
+#define USE_APRS      // enables APRS transmissions
 #define USE_WSPR      // enables WSPR transmissions
-#define USE_ARDUCAM   // enables Arducam camera module 
+#undef USE_ARDUCAM   // enables Arducam camera module 
 
 #include <Arduino.h>
 #include <Wire.h>
@@ -25,6 +25,9 @@
 #include <ArduCAM.h>
 #include <SPI.h>
 #include "memorysaver.h"
+#if !(defined OV2640_MINI_2MP_PLUS)
+  #error Please select the hardware platform and camera module in the ../libraries/ArduCAM/memorysaver.h file
+#endif
 #endif
 
 #define RfPDPin     19
@@ -157,13 +160,10 @@ const char bmp_header[BMPIMAGEOFFSET] PROGMEM =
   0x00, 0x00
 };
 
-// set pin 7 as the slave select for the digital pot:
-const int CS = 7;
-
 #if defined (OV2640_MINI_2MP_PLUS)
-  ArduCAM myCAM( OV2640, CS );
+  ArduCAM myCAM( OV2640, -1 );
 #else
-  ArduCAM myCAM( OV5642, CS );
+  ArduCAM myCAM( OV5642, -1 );
 #endif
 #endif
 //*******************************************************************************
@@ -240,7 +240,7 @@ void setup() {
 #else
   Serial.println(F("+++ GPS enabled"));
 #endif
-  Serial.println(F("\n\n"));
+  Serial.println();
 #endif
 
 #ifdef USE_APRS
@@ -258,30 +258,56 @@ void setup() {
   AprsPinInput;
 #endif
 
+  //Serial.println(F("--- Start BMP"));
   bmp.begin();
 
 #ifdef USE_ARDUCAM
+  Serial.println(F("--- Init SPI"));
   // initialize SPI:
   SPI.begin();
+  SPI.setClockDivider(SPI_CLOCK_DIV8);
+  SPI.setBitOrder(MSBFIRST);
+  SPI.setDataMode(SPI_MODE0);
   
   //Reset the CPLD
   myCAM.write_reg(0x07, 0x80);
   delay(100);
   myCAM.write_reg(0x07, 0x00);
   delay(100);
-  while (1) {
-    //Check if the ArduCAM SPI bus is OK
+  
+  int retriesLeft = 5;
+  while (retriesLeft-- > 0) {
+    // Check if the ArduCAM SPI bus is OK
     myCAM.write_reg(ARDUCHIP_TEST1, 0x55);
     uint8_t temp = myCAM.read_reg(ARDUCHIP_TEST1);
     if (temp != 0x55) {
-      Serial.println(F("ACK CMD SPI interface Error! END"));
+      wdt_reset();
+      Serial.print(F("Got: "));
+      printHex(temp);
+      Serial.println(F("*** ERR: Arducam SPI test failed!"));
       delay(1000);
-      continue;
     } else {
-      Serial.println(F("ACK CMD SPI interface OK. END"));
+      Serial.println(F("--- Arducam SPI OK"));
       break;
     }
   }
+
+//  retriesLeft = 1;
+//  while (retriesLeft-- > 0) {
+//    //Check if the camera module type is OV2640
+    uint8_t vid, pid;
+    myCAM.wrSensorReg8_8(0xff, 0x01);
+    myCAM.rdSensorReg8_8(OV2640_CHIPID_HIGH, &vid);
+    myCAM.rdSensorReg8_8(OV2640_CHIPID_LOW, &pid);
+    if ((vid != 0x26 ) && (( pid != 0x41 ) || ( pid != 0x42 ))){
+      Serial.println(F("*** ERR: Can't find Arducam OV2640 module!"));
+      //delay(1000);
+    } else {
+      Serial.println(F("--- Arducam OV2640 detected."));
+      //break;
+    } 
+//  }
+
 #endif
 }
 
@@ -868,7 +894,7 @@ void sendStatusViaAPRS() {
 boolean updateGpsData(int ms)
 {
 #ifdef DEVMODE
-   Serial.println(F("--- GPS Update START\n"));
+   Serial.println(F("--- GPS Update START"));
 #endif
   GpsON;
 
