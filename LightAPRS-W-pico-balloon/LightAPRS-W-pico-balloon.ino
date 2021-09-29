@@ -2,7 +2,7 @@
 // Configuration definitions - added 9/14/21 Gary N6DM
 //
 #define DEVMODE       // Development mode. Uncomment to enable for debugging.
-#define USE_GPS_SIM   // for testing on the ground use GPS simulator, ignore Ublox GPS
+#undef USE_GPS_SIM   // for testing on the ground use GPS simulator, ignore Ublox GPS
 #define USE_APRS      // enables APRS transmissions
 #define USE_WSPR      // enables WSPR transmissions
 #undef USE_ARDUCAM   // enables Arducam camera module 
@@ -534,11 +534,15 @@ void sendPositionViaAPRS() {
   updateTelemetry();
           
   //APRS frequency isn't the same for the whole world. (for pico balloon only)
+  // TODO: configure frequency every hour or every 2º longitude, not just TxCount==200
+  //       (TxCount is never reset unless overnight power down)
   if (!aprsRadioSetup || TxCount == 200) {
     configureFreqbyLocation();
   }
 
-  if (autoPathSizeHighAlt && gps.altitude.feet()>3000){
+  int altitudeM = gps.altitude.isValid() ? gps.altitude.meters() : pressureAltitudeM;
+  
+  if (autoPathSizeHighAlt && altitudeM>1000){
     //force to use high altitude settings (WIDE2-n)
     APRS_setPathSize(1);
   } else {
@@ -681,18 +685,19 @@ boolean waitForAckFromDRA(uint16_t timeLimitMS, SoftwareSerial* Serial_dra)
       reply[replyLen++] = Serial_dra->read();
  
       // look for LF at end of reply message
-      if (reply[replyLen] == 0x0A) {
-        // check "0" or "1" in reply to see if really successful
-        if (reply[replyLen-2] == '1') {
+      if (reply[replyLen-1] == 0x0A) {
+        // check "0" at end of reply to see if really successful
+        if (reply[replyLen-3] == '0') {
 #ifdef DEVMODE
           printReply(reply, replyLen);
           Serial.println(F("--- Success DRA configured"));
 #endif
           return true;    //--------- SUCCESS, GOT ACK
-        } else if (reply[replyLen-2] == '0') {
+        } else {
 #ifdef DEVMODE
+          Serial.print(F("*** ERR: DRA says: "));
           printReply(reply, replyLen);
-          Serial.println(F("*** ERR: DRA return 0"));
+          Serial.println();
 #endif
           return false;   //--------- FAILED, GOT NACK
         }
