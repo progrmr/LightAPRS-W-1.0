@@ -2,7 +2,7 @@
 // Configuration definitions - added 9/14/21 Gary N6DM
 //
 #define DEVMODE       // Development mode. Uncomment to enable for debugging.
-#undef USE_GPS_SIM   // for testing on the ground use GPS simulator, ignore Ublox GPS
+#define USE_GPS_SIM   // for testing on the ground use GPS simulator, ignore Ublox GPS
 #define USE_APRS      // enables APRS transmissions
 #define USE_WSPR      // enables WSPR transmissions
 #undef USE_ARDUCAM   // enables Arducam camera module 
@@ -1298,6 +1298,7 @@ void printStringWHex(char* str, int length)
   for (int i=0; i<length; i++) {
     char ch = str[i];
     if (ch <= ' ') {
+      Serial.print(F(" 0x"));
       printHex(ch);
     } else {
       Serial.print(ch);  
