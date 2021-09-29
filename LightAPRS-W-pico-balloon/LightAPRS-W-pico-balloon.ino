@@ -2,10 +2,10 @@
 // Configuration definitions - added 9/14/21 Gary N6DM
 //
 #define DEVMODE       // Development mode. Uncomment to enable for debugging.
-#undef USE_GPS_SIM   // for testing on the ground use GPS simulator, ignore Ublox GPS
-#define USE_APRS      // enables APRS transmissions
+#define USE_GPS_SIM   // for testing on the ground use GPS simulator, ignore Ublox GPS
+#undef USE_APRS      // enables APRS transmissions
 #define USE_WSPR      // enables WSPR transmissions
-#undef USE_ARDUCAM   // enables Arducam camera module 
+#define USE_ARDUCAM   // enables Arducam camera module 
 
 #include <Arduino.h>
 #include <Wire.h>
@@ -898,9 +898,6 @@ void sendStatusViaAPRS() {
 
 boolean updateGpsData(int ms)
 {
-#ifdef DEVMODE
-   Serial.println(F("--- GPS Update START"));
-#endif
   GpsON;
 
   if(!ublox_high_alt_mode_enabled){
@@ -939,10 +936,6 @@ boolean updateGpsData(int ms)
     if (bekle != 0 && bekle + 10 < millis()) break;
   } while (millis() - start < ms);
   
-#ifdef DEVMODE
-   Serial.println(F("--- GPS Update DONE"));
-#endif
-
   return (gps.location.age() < 1000 || gps.location.isUpdated()) && gps.location.isValid();
 }
 
@@ -1326,7 +1319,9 @@ void printHex(uint16_t val)
 void printDateTime(TinyGPSDate &d, TinyGPSTime &t)
 {
 #if defined(DEVMODE)
-  if (!d.isValid())
+  bool invalid = d.year() < 2021;
+  
+  if (invalid || !d.isValid())
   {
     Serial.print(F("********** "));
   }
@@ -1337,7 +1332,7 @@ void printDateTime(TinyGPSDate &d, TinyGPSTime &t)
     Serial.print(sz);
   }
 
-  if (!t.isValid())
+  if (invalid || !t.isValid())
   {
     Serial.print(F("******** "));
   }
@@ -1348,7 +1343,11 @@ void printDateTime(TinyGPSDate &d, TinyGPSTime &t)
     Serial.print(sz);
   }
 
-  printInt(d.age(), d.isValid(), 5);
+  if (invalid || !d.isValid()) {
+    Serial.print(F("**** "));
+  } else {
+    printInt(d.age(), true, 5);
+  }
 #endif
 }
 
