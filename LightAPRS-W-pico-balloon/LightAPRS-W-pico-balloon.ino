@@ -28,6 +28,7 @@
 #if !(defined OV2640_MINI_2MP_PLUS)
   #error Please select the hardware platform and camera module in the ../libraries/ArduCAM/memorysaver.h file
 #endif
+#define CameraCSPin 4
 #endif
 
 #define RfPDPin     19
@@ -161,9 +162,9 @@ const char bmp_header[BMPIMAGEOFFSET] PROGMEM =
 };
 
 #if defined (OV2640_MINI_2MP_PLUS)
-  ArduCAM myCAM( OV2640, -1 );
+  ArduCAM myCAM( OV2640, CameraCSPin );
 #else
-  ArduCAM myCAM( OV5642, -1 );
+  ArduCAM myCAM( OV5642, CameraCSPin );
 #endif
 #endif
 //*******************************************************************************
@@ -213,6 +214,11 @@ void setup() {
   pinMode(BattPin, INPUT);
   pinMode(PIN_DRA_TX, INPUT);
   pinMode(SiVccPin, OUTPUT);
+  
+#ifdef USE_ARDUCAM
+  pinMode(CameraCSPin, OUTPUT);
+  digitalWrite(CameraCSPin, HIGH);
+#endif
 
   RfOFF;
   GpsOFF;
@@ -234,6 +240,11 @@ void setup() {
   Serial.println(F("+++ WSPR enabled"));
 #else
   Serial.println(F("--- WSPR removed"));
+#endif
+#ifdef USE_ARDUCAM
+  Serial.println(F("+++ Arducam enabled"));
+#else
+  Serial.println(F("--- Arducam removed"));
 #endif
 #ifdef USE_GPS_SIM 
   Serial.println(F("*** GROUND TEST enabled, GPS ignored"));
@@ -261,13 +272,13 @@ void setup() {
   //Serial.println(F("--- Start BMP"));
   bmp.begin();
 
-#ifdef USE_ARDUCAM
+#ifdef USE_ARDUCAM 
   Serial.println(F("--- Init SPI"));
   // initialize SPI:
   SPI.begin();
-  SPI.setClockDivider(SPI_CLOCK_DIV8);
-  SPI.setBitOrder(MSBFIRST);
-  SPI.setDataMode(SPI_MODE0);
+  //SPI.setClockDivider(SPI_CLOCK_DIV8);
+  //SPI.setBitOrder(MSBFIRST);
+  //SPI.setDataMode(SPI_MODE0);
   
   //Reset the CPLD
   myCAM.write_reg(0x07, 0x80);
