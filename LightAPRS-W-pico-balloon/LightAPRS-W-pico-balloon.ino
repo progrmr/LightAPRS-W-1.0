@@ -5,7 +5,7 @@
 #define USE_GPS_SIM   // for testing on the ground use GPS simulator, ignore Ublox GPS
 #undef USE_APRS      // enables APRS transmissions
 #define USE_WSPR      // enables WSPR transmissions
-#define USE_ARDUCAM   // enables Arducam camera module 
+#define USE_SSTV      // enables Arducam camera module 
 
 #include <Arduino.h>
 #include <Wire.h>
@@ -21,14 +21,15 @@
 #include <TimeLib.h>        //https://github.com/PaulStoffregen/Time
 #include <TimerThree.h>     //https://github.com/PaulStoffregen/TimerThree/
 
-#ifdef USE_ARDUCAM
-#include <ArduCAM.h>
-#include <SPI.h>
-#include "memorysaver.h"
+#ifdef USE_SSTV
+#include <ArduCAM.h>      // ArduCAM Mini 2MP Plus camera
+#include <SPI.h>          // SPI communication to Arducam
+#include "memorysaver.h"  // ArduCAM configurationa
 #if !(defined OV2640_MINI_2MP_PLUS)
   #error Please select the hardware platform and camera module in the ../libraries/ArduCAM/memorysaver.h file
 #endif
 #define CameraCSPin 4
+#define SecondsBetweenPhotos (60)   // 60 for testing purposes, change to ?? for flight ops
 #endif
 
 #define RfPDPin     19
@@ -101,6 +102,9 @@ enum mode cur_mode = MODE_WSPR; //default HF mode
 #define   DraHighVolt 6.0 //min Volts for radio module (DRA818V) to transmit (TX) 1 Watt, below this transmit 0.5 Watt.
 #define   WsprBattMin 4.5 //min Volts for HF mradio module to transmit (TX) ~10 mW
 
+//******************************  SSTV SETTINGS *********************************
+#define SSTV_DEFAULT_FREQ       14230000UL
+
 //******************************  APRS SETTINGS *********************************
 #ifdef USE_APRS
 
@@ -150,7 +154,7 @@ uint16_t TxCount = 1; //increase +1 after every APRS transmission
 #define CORRECTION              -3700         // Change this for your ref osc
 
 //******************************  ARDUCAM declarations   *********************************
-#ifdef USE_ARDUCAM 
+#ifdef USE_SSTV 
 #define BMPIMAGEOFFSET 66
 const char bmp_header[BMPIMAGEOFFSET] PROGMEM =
 {
@@ -160,6 +164,7 @@ const char bmp_header[BMPIMAGEOFFSET] PROGMEM =
   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF8, 0x00, 0x00, 0xE0, 0x07, 0x00, 0x00, 0x1F, 0x00,
   0x00, 0x00
 };
+uint32_t lastPhotoTimeMS = 0;
 
 #if defined (OV2640_MINI_2MP_PLUS)
   ArduCAM myCAM( OV2640, CameraCSPin );
@@ -215,7 +220,7 @@ void setup() {
   pinMode(PIN_DRA_TX, INPUT);
   pinMode(SiVccPin, OUTPUT);
   
-#ifdef USE_ARDUCAM
+#ifdef USE_SSTV
   pinMode(CameraCSPin, OUTPUT);
   digitalWrite(CameraCSPin, HIGH);
 #endif
@@ -241,10 +246,10 @@ void setup() {
 #else
   Serial.println(F("--- WSPR removed"));
 #endif
-#ifdef USE_ARDUCAM
-  Serial.println(F("+++ Arducam enabled"));
+#ifdef USE_SSTV
+  Serial.println(F("+++ SSTV enabled"));
 #else
-  Serial.println(F("--- Arducam removed"));
+  Serial.println(F("--- SSTV removed"));
 #endif
 #ifdef USE_GPS_SIM 
   Serial.println(F("*** GROUND TEST enabled, GPS ignored"));
@@ -272,13 +277,10 @@ void setup() {
   //Serial.println(F("--- Start BMP"));
   bmp.begin();
 
-#ifdef USE_ARDUCAM 
-  Serial.println(F("--- Init SPI"));
+#ifdef USE_SSTV 
+  Serial.println(F("--- Init SPI to Arducam"));
   // initialize SPI:
   SPI.begin();
-  //SPI.setClockDivider(SPI_CLOCK_DIV8);
-  //SPI.setBitOrder(MSBFIRST);
-  //SPI.setDataMode(SPI_MODE0);
   
   //Reset the CPLD
   myCAM.write_reg(0x07, 0x80);
@@ -286,7 +288,7 @@ void setup() {
   myCAM.write_reg(0x07, 0x00);
   delay(100);
   
-  int retriesLeft = 5;
+  int retriesLeft = 4;
   while (retriesLeft-- > 0) {
     // Check if the ArduCAM SPI bus is OK
     myCAM.write_reg(ARDUCHIP_TEST1, 0x55);
@@ -303,22 +305,21 @@ void setup() {
     }
   }
 
-//  retriesLeft = 1;
-//  while (retriesLeft-- > 0) {
-//    //Check if the camera module type is OV2640
+  retriesLeft = 4;
+  while (retriesLeft-- > 0) {
+    //Check if the camera module type is OV2640
     uint8_t vid, pid;
     myCAM.wrSensorReg8_8(0xff, 0x01);
     myCAM.rdSensorReg8_8(OV2640_CHIPID_HIGH, &vid);
     myCAM.rdSensorReg8_8(OV2640_CHIPID_LOW, &pid);
     if ((vid != 0x26 ) && (( pid != 0x41 ) || ( pid != 0x42 ))){
       Serial.println(F("*** ERR: Can't find Arducam OV2640 module!"));
-      //delay(1000);
+      delay(1000);
     } else {
       Serial.println(F("--- Arducam OV2640 detected."));
-      //break;
+      break;
     } 
-//  }
-
+  }
 #endif
 }
 
@@ -382,6 +383,14 @@ void loop() {
         gps.hdop = TinyGPSDecimal();
       }
     }
+
+#ifdef USE_SSTV
+    if (timeToTakePhoto()) {
+      lastPhotoTimeMS = millis();         // update time of last photo taken
+
+      
+    }
+#endif // USE_SSTV
 
     if (GpsSatellitesGood) {
         GpsOFF;
@@ -1449,3 +1458,11 @@ boolean getUBX_ACK(uint8_t *MSG) {
     }
   }
 }
+
+#ifdef USE_SSTV
+boolean timeToTakePhoto() {
+  // take photo if none taken or if 60 seconds have passed by
+  //
+  return (lastPhotoTimeMS == 0) || (lastPhotoTimeMS-millis() > SecondsBetweenPhotos*1000);
+}
+#endif
