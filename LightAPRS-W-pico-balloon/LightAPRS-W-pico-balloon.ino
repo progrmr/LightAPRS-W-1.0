@@ -4,7 +4,7 @@
 #define DEVMODE       // Development mode. Uncomment to enable for debugging.
 #define USE_GPS_SIM   // for testing on the ground use GPS simulator, ignore Ublox GPS
 #undef USE_APRS      // enables APRS transmissions
-#define USE_WSPR      // enables WSPR transmissions
+#undef USE_WSPR      // enables WSPR transmissions
 #define USE_SSTV      // enables Arducam camera module 
 
 #include <Arduino.h>
@@ -165,6 +165,7 @@ const char bmp_header[BMPIMAGEOFFSET] PROGMEM =
   0x00, 0x00
 };
 uint32_t lastPhotoTimeMS = 0;
+bool is_header = false;
 
 #if defined (OV2640_MINI_2MP_PLUS)
   ArduCAM myCAM( OV2640, CameraCSPin );
@@ -283,6 +284,7 @@ void setup() {
   SPI.begin();
   
   //Reset the CPLD
+  // code from: ArduCAM_Mini_2MP_Plus_functions.ino example
   myCAM.write_reg(0x07, 0x80);
   delay(100);
   myCAM.write_reg(0x07, 0x00);
@@ -386,9 +388,40 @@ void loop() {
 
 #ifdef USE_SSTV
     if (timeToTakePhoto()) {
-      lastPhotoTimeMS = millis();         // update time of last photo taken
+      Serial.println(F("--- time to take photo with Arducam OV2640 module"));
 
+      myCAM.set_format(JPEG);
+      myCAM.InitCAM();
+      myCAM.OV2640_set_JPEG_size(OV2640_320x240);
+
+      delay(1000);
+      myCAM.clear_fifo_flag();
+
+      int mode = 1;
+      uint8_t temp = 0xff;
+      uint8_t start_capture = 1;
+      Serial.println(F("--- ACK CMD CAM start single shoot"));
+  
+      if (mode == 1) {
+          myCAM.flush_fifo();
+          myCAM.clear_fifo_flag();
+          //Start capture
+          myCAM.start_capture();
+          start_capture = 0;
       
+        if (myCAM.get_bit(ARDUCHIP_TRIG, CAP_DONE_MASK))
+        {
+          Serial.println(F("--- ACK CMD CAM Capture Done"));delay(50);
+          read_fifo_burst(myCAM);
+          //Clear the capture done flag
+          myCAM.clear_fifo_flag();
+        }
+      }
+  
+  
+
+
+      lastPhotoTimeMS = millis();         // update time of last photo take
     }
 #endif // USE_SSTV
 
@@ -1464,5 +1497,49 @@ boolean timeToTakePhoto() {
   // take photo if none taken or if 60 seconds have passed by
   //
   return (lastPhotoTimeMS == 0) || (lastPhotoTimeMS-millis() > SecondsBetweenPhotos*1000);
+}
+
+uint8_t read_fifo_burst(ArduCAM myCAM)
+{
+  uint8_t temp = 0, temp_last = 0;
+  uint32_t length = 0;
+  length = myCAM.read_fifo_length();
+  Serial.println(length, DEC);
+  if (length >= MAX_FIFO_SIZE) //512 kb
+  {
+    Serial.println(F("ACK CMD Over size. END"));
+    return 0;
+  }
+  if (length == 0 ) //0 kb
+  {
+    Serial.println(F("ACK CMD Size is 0. END"));
+    return 0;
+  }
+  myCAM.CS_LOW();
+  myCAM.set_fifo_burst();//Set fifo burst mode
+  temp =  SPI.transfer(0x00);
+  length --;
+  while ( length-- )
+  {
+    temp_last = temp;
+    temp =  SPI.transfer(0x00);
+    if (is_header == true)
+    {
+      Serial.write(temp);
+    }
+    else if ((temp == 0xD8) & (temp_last == 0xFF))
+    {
+      is_header = true;
+      Serial.println(F("ACK IMG END"));
+      Serial.write(temp_last);
+      Serial.write(temp);
+    }
+    if ( (temp == 0xD9) && (temp_last == 0xFF) ) //If find the end ,break while,
+    break;
+    delayMicroseconds(15);
+  }
+  myCAM.CS_HIGH();
+  is_header = false;
+  return 1;
 }
 #endif
