@@ -77,7 +77,10 @@ Download and install [Arduino IDE](https://www.arduino.cc/en/Main/Software). If 
 - Separate the URLs using a comma ( , ) if you have more than one URL
 - Open the **Tools > Board > Boards Manager...** menu item. [[Screenshot]](images/arduino-tools-boards-manager.png)
 - Wait for the platform indexes to finish downloading.
-- Type "MightyCore" in the search bar until you see the **MightyCore** entry and click on it and select  version **2.2.2** <img width="797" alt="image" src="https://github.com/lightaprs/LightAPRS-W-1.0/assets/48382675/e0e57d86-fab0-4267-b875-a9d958fefc2f">
+- Type "MightyCore" in the search bar until you see the **MightyCore** entry and click on it and select version **2.2.2** (**Important :** Do not select/install version 3.0.0, you might get "avrdude avr_signature() error: unable to read signature data for part ATmega1284P, rc=-1" error)
+
+<img width="797" alt="image" src="https://github.com/lightaprs/LightAPRS-W-1.0/assets/48382675/e0e57d86-fab0-4267-b875-a9d958fefc2f">
+
 - Click **Install** . (Do not install version 3.0.0)
 - After installation is complete, close the **Boards Manager** window.
 
